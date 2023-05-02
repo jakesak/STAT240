@@ -1,0 +1,242 @@
+---
+author: "Jake Sak"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE,
+                      warning = FALSE, error = TRUE,
+                      fig.height = 3)
+library(tidyverse)
+library(lubridate)
+source("../../scripts/viridis.R")
+```
+
+## Assignment 6
+
+#### Due Sunday, March 26, 11:59 PM CT
+
+### Preliminaries
+
+- Directories
+    - COURSE/homework/
+    - COURSE/homework/hw06/
+    - COURSE/data/
+    - COURSE/scripts/
+- Files
+  - COURSE/homework/hw06/hw06.Rmd
+  - COURSE/data/exoplanets-clean-through-2022.csv
+  - COURSE/data/wordle.csv
+  - COURSE/scripts/viridis.R
+
+### Aims
+
+- Practice strings and regular expressions
+
+
+### Problems
+
+Problems 1--4 are based on a data frame with the names of built-in R colors.
+  
+```{r}
+df_colors = tibble(color = colors()) %>% 
+  mutate(index = row_number(), .before = color)
+```
+
+  1. Create a data frame with the names of all colors whose names are exactly 7 characters long. Print a summary of this data frame with the number of colors and the first and last alphabetically in the list.
+  
+```{r}
+colors_7 = df_colors %>%
+  filter(str_length(color) == 7)
+colors_7 %>%
+  summarize(num = n(), first = min(color), last = max(color)) %>%
+  print()
+```
+  
+  
+
+
+
+
+
+
+  2. How many of the previous color names contain no digits? Create a second data frame which eliminates the rows from your solution to the previous problem any color names which contain a digit. Print a summary of this data frame with the number of colors and the first and last alphabetically in the list.
+
+```{r}
+colors_7_no_num = colors_7 %>%
+  filter(!str_detect(color, "[:digit:]"))
+colors_7_no_num %>%
+  summarize(num = n(), first = min(color), last = max(color)) %>%
+  print()
+```
+
+
+
+
+
+  3. Find all colors which contain consecutive letters "e". Print a summary with a count of how many such colors there are and the first and last alphabetically.
+  
+```{r}
+colors_double_e = df_colors %>%
+  filter(str_detect(color, "ee"))
+colors_double_e %>%
+  summarize(num = n(), first = min(color), last = max(color)) %>%
+  print()
+```
+
+
+
+  
+  
+  4. Find all color names which contain any consecutive identical letters. Create a data frame with these colors.
+  
+- Print the first ten rows of this data frame
+- Tabulate how often each letter is used in a consecutive letter pair and print out this table arranged in descending order of the counts.
+- Identify the three color names which have a distinct pair of consecutive identical letters. (These are the only color names which use the given letter pair.)
+  
+```{r}
+str_ident = df_colors %>%
+  filter(str_detect(color, "([:alpha:])\\1"))
+str_ident %>% print(n = 10)
+
+
+str_ident_letters = str_ident %>%
+  mutate(letter = str_extract_all(color, "([:alpha:])\\1")) %>%
+  unnest(letter) %>%
+  mutate(letter = str_sub(letter, 1, 1)) 
+
+str_ident_letter_counts = str_ident_letters %>%
+  group_by(letter) %>%
+  summarize(count = n()) %>%
+  arrange(desc(count)) %>% 
+  print()
+
+
+distinct_letters = str_ident_letter_counts %>%
+  filter(count == 1) %>%
+  select(letter)
+
+distinct_letter_words = inner_join(str_ident_letters, distinct_letters, by = "letter")
+```
+
+
+
+
+  
+  5. Load the exoplanet data set from the file `exoplanets-clean-through-2022.csv`. Create a new data frame by selecting only the columns `id` and `star`. Find and print all rows where the name in `star` does not match the string in `star` treated as a regular expression.
+  
+- What seems to be the common characteristic of such star names?
+
+After identifying this characteristic, add a column to the `planets` data frame with the name `star_regex` which, when treated as a regular expression, does match the literal star name exactly. Such a regular expression should begin with `^` and end with `$`. Verify that each star name is matched by the regular expression.
+  
+  
+  
+```{r}
+planets = read_csv("../../data/exoplanets-clean-through-2022.csv")
+```
+  
+
+```{r}
+no_match_stars = planets %>%
+  select(id, star) %>%
+  filter(!str_detect(star, star))
+no_match_stars %>% print(n = Inf)
+
+planets = planets %>%
+  mutate(star_regex = str_c('^',star,"$")) %>%
+  mutate(star_regex = str_replace_all(star_regex, "\\+", "\\\\+")) %>%
+  mutate(star_regex = str_replace_all(star_regex, "\\.", "\\\\."))
+
+planets %>% 
+  summarize(not_matching = sum(!str_detect(star, star_regex)) )%>%
+  print()
+
+```
+
+> All star names which do not match contain a + or a ., which have special characteristics in regular expressions
+
+
+
+
+  6. Most planets have a name equal to the star name followed by a space and a single lower case letter. Identify all planets for which this pattern is not true.
+  
+- Print the columns `id`, `planet`, `star`, and `year` for all planets in `planets` which do not fit this pattern.
+  
+- How many of the 5240 exoplanets do not follow the typical convention?
+  
+  
+```{r}
+planets_no_star_name = planets %>%
+  filter(!str_detect(planet, str_c(str_sub(star_regex, 1, -2), " ", "[:lower:]", "$"))) %>%
+  select(id, planet, star, year) %>%
+  print(n = Inf)
+```
+
+>48 of the 5240 exoplanets do not follow the typical convention
+  
+  
+
+
+
+  7. For the planets whose names **do match** the pattern from the previous problem, create a table which counts the frequency of the last lower case letters in the planet name. Display this data with an effective graph.
+  
+  
+  
+```{r}
+planet_letters = planets %>%
+  filter(str_detect(planet, str_c(str_sub(star_regex, 1, -2), " ", "[:lower:]", "$"))) %>%
+  mutate(planet_letter = str_sub(planet, -1, -1)) %>%
+  group_by(planet_letter) %>%
+  summarize(count = n())
+
+ggplot(planet_letters, aes(x = planet_letter, y = count)) +
+  geom_col(color = "black", fill = "blue") +
+  scale_y_log10() +
+  xlab("Planet Last Letter") +
+  ylab("Count") +
+  ggtitle("Last Letter Counts")
+```
+
+
+
+
+  8. The file `wordle_data.csv` contains the original solution list to the game Wordle.
+In the game, players attempt to identify a secret five-letter word by guessing a word and using the color-coded information returned.
+A green letter from the guess is in the correct location in the secret word.
+A yellow letter from the guess is in the secret word, but is not in the correct location.
+A gray letter is not in the word (unless a guess contains multiple copis of the same letter and at least one letter is colored and another is gray).
+
+In a puzzle, the guess information is return for these first two guesses.
+
+- SLATE returns the pattern Gray, Gray, Gray, Yellow, Gray
+- COUNT returns the pattern Yellow, Green, Gray, Gray, Yellow
+
+*(Note that the words in the data base have all lower case letters.)*
+
+Find all possible solutions in `wrdl` which are consistent with the information given.
+
+*Hint: you may find it easiest to pipe the word list through multiple `filter()` commands instead of trying to create a single regular expression which only matches all possible solutions. For example, you know the secret word contains at least one `T` and this letter is not in the 4th or 5th positions, at least one `C` which is not the first letter, and that the second letter is an `O`. You also know several letters which are not contained in the secret word.*
+
+```{r}
+wrdl = read_csv("../../data/wordle_data.csv") %>% 
+  filter(solution == TRUE) %>% 
+  select(word)
+  
+wrdl_possible = wrdl %>%
+  filter(str_detect(word, "t")) %>%
+  filter(str_detect(word, "c")) %>%
+  filter(str_sub(word, 2, 2) == "o") %>%
+  filter(!str_detect(str_sub(word, 4, 5), "t")) %>%
+  filter(!str_starts(word, "c")) %>%
+  filter(!str_detect(word, "s")) %>%
+  filter(!str_detect(word, "l")) %>%
+  filter(!str_detect(word, "a")) %>%
+  filter(!str_detect(word, "e")) %>%
+  filter(!str_detect(word, "u")) %>%
+  filter(!str_detect(word, "n"))
+wrdl_possible %>% print(n = Inf)
+```
+
+
+
+
